@@ -1,5 +1,4 @@
-# Monad Execution
-
+# Monad Executionññ
 ## Overview
 
 This repository contains the execution component of a Monad node. It
@@ -108,8 +107,6 @@ You can also run the full test suite in parallel with:
 
 ```
 CTEST_PARALLEL_LEVEL=$(nproc) ctest
-```
-
 ## A tour of execution
 
 To understand how the source code is organized, you should start by reading
