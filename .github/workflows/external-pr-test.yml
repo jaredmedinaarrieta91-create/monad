@@ -1,0 +1,117 @@
+name: External PR Testing
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  check-and-test:
+    runs-on: ubuntu-latest
+    if: github.event.issue.pull_request && contains(github.event.comment.body, '/test all')
+    steps:
+      - name: React to comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'rocket'
+            });
+
+      - name: Get PR details
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+
+            core.setOutput('pr_number', pr.number);
+            core.setOutput('pr_head_ref', pr.head.ref);
+            core.setOutput('pr_head_sha', pr.head.sha);
+            core.setOutput('pr_head_repo', pr.head.repo.full_name);
+
+            console.log(`PR #${pr.number}`);
+            console.log(`Head ref: ${pr.head.ref}`);
+            console.log(`Head SHA: ${pr.head.sha}`);
+            console.log(`Head repo: ${pr.head.repo.full_name}`);
+
+      - name: Comment start
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '🚀 Starting test suite for PR #${{ steps.pr.outputs.pr_number }}...\n\n' +
+                    '**Testing commit:** `${{ steps.pr.outputs.pr_head_sha }}`\n' +
+                    '**Triggered by:** @${{ github.event.comment.user.login }}'
+            });
+
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.pr_head_sha }}
+          fetch-depth: 0
+
+      - name: Basic validation
+        run: |
+          echo "Testing PR #${{ steps.pr.outputs.pr_number }}"
+          echo "Head SHA: ${{ steps.pr.outputs.pr_head_sha }}"
+          echo "Triggered by: ${{ github.event.comment.user.login }}"
+          echo "Repository structure:"
+          ls -la
+          echo "Checking if this is a C++ project:"
+          if [ -f "CMakeLists.txt" ]; then
+            echo "✅ Found CMakeLists.txt"
+          else
+            echo "❌ No CMakeLists.txt found"
+          fi
+
+      - name: Mock build test
+        run: |
+          echo "🔨 Mock building project..."
+          sleep 2
+          echo "✅ Build completed successfully"
+
+      - name: Mock test run
+        run: |
+          echo "🧪 Mock running tests..."
+          sleep 3
+          echo "✅ All tests passed"
+
+      - name: Report results
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const jobResult = '${{ job.status }}';
+            const emoji = jobResult === 'success' ? '✅' : '❌';
+
+            let body = `${emoji} **Test Results for PR #${{ steps.pr.outputs.pr_number }}**\n\n`;
+            body += `**Status:** ${jobResult}\n`;
+            body += `**Workflow Run:** ${context.payload.repository.html_url}/actions/runs/${context.runId}\n`;
+            body += `**Triggered by:** @${{ github.event.comment.user.login }}\n`;
+            body += `**Tested commit:** \`${{ steps.pr.outputs.pr_head_sha }}\`\n\n`;
+
+            if (jobResult === 'success') {
+              body += `**Results:**\n`;
+              body += `- ✅ Basic validation passed\n`;
+              body += `- ✅ Mock build completed\n`;
+              body += `- ✅ Mock tests passed\n`;
+            } else {
+              body += `❌ Tests failed. Check the workflow run for details.`;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.pr.outputs.pr_number }},
+              body: body
+            });
